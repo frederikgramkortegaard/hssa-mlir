@@ -1,0 +1,29 @@
+// Regression: literals must fit in i32; out-of-range literals used to be
+// silently truncated. Both boundaries stay importable.
+// RUN: split-file %s %t
+// RUN: not hssa-translate --import-hssa %t/above.hssa 2>&1 | FileCheck %s --check-prefix=ABOVE
+// RUN: not hssa-translate --import-hssa %t/below.hssa 2>&1 | FileCheck %s --check-prefix=BELOW
+// RUN: hssa-translate --import-hssa %t/edge.hssa | FileCheck %s --check-prefix=EDGE
+
+// ABOVE: error: literal '2147483648' does not fit in i32
+//--- above.hssa
+rel f:
+x, 0 := begin <-
+ y := add 2147483648 =: x
+      -> end =: y, 0
+
+// BELOW: error: literal '-2147483649' does not fit in i32
+//--- below.hssa
+rel f:
+x, 0 := begin <-
+ y := add -2147483649 =: x
+      -> end =: y, 0
+
+// EDGE: arith.constant 2147483647 : i32
+// EDGE: arith.constant -2147483648 : i32
+//--- edge.hssa
+rel f:
+x, 0 := begin <-
+ y := add 2147483647 =: x
+ z := add -2147483648 =: y
+      -> end =: z, 0

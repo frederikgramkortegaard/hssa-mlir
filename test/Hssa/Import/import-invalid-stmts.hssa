@@ -1,0 +1,83 @@
+// Statement-level importer diagnostics. Each part trips exactly one error.
+// RUN: split-file %s %t
+// RUN: not hssa-translate --import-hssa %t/unknown-var.hssa 2>&1 | FileCheck %s --check-prefix=UNKNOWN-VAR
+// RUN: not hssa-translate --import-hssa %t/def-twice.hssa 2>&1 | FileCheck %s --check-prefix=DEF-TWICE
+// RUN: not hssa-translate --import-hssa %t/missing-sep.hssa 2>&1 | FileCheck %s --check-prefix=MISSING-SEP
+// RUN: not hssa-translate --import-hssa %t/unsupported.hssa 2>&1 | FileCheck %s --check-prefix=NO-SUCH-OP
+// RUN: not hssa-translate --import-hssa %t/undiscard.hssa 2>&1 | FileCheck %s --check-prefix=UNDISCARD
+// RUN: not hssa-translate --import-hssa %t/param-arity.hssa 2>&1 | FileCheck %s --check-prefix=PARAM-ARITY
+// RUN: not hssa-translate --import-hssa %t/consume-arity.hssa 2>&1 | FileCheck %s --check-prefix=CONSUME-ARITY
+// RUN: not hssa-translate --import-hssa %t/produce-arity.hssa 2>&1 | FileCheck %s --check-prefix=PRODUCE-ARITY
+// RUN: not hssa-translate --import-hssa %t/malformed.hssa 2>&1 | FileCheck %s --check-prefix=MALFORMED
+// RUN: not hssa-translate --import-hssa %t/empty-part.hssa 2>&1 | FileCheck %s --check-prefix=EMPTY-PART
+
+// UNKNOWN-VAR: error: unknown variable 'z'
+//--- unknown-var.hssa
+rel f:
+x, 0 := begin <-
+ y := add z =: x
+      -> end =: y, 0
+
+// DEF-TWICE: error: variable 'x' is defined twice
+//--- def-twice.hssa
+rel f:
+x, 0 := begin <-
+ x := add 1 =: x
+      -> end =: x, 0
+
+// MISSING-SEP: error: statement is missing its ':=' / '=:' separators
+//--- missing-sep.hssa
+rel f:
+x, 0 := begin <-
+ y := add 1
+      -> end =: y, 0
+
+// NO-SUCH-OP: error: unsupported operation 'frobnicate'
+//--- unsupported.hssa
+rel f:
+x, 0 := begin <-
+ y := frobnicate =: x
+      -> end =: y, 0
+
+// ~discard has no executable inverse (an oracle would be needed).
+// UNDISCARD: error: '~discard' is not executable
+//--- undiscard.hssa
+rel f:
+x, 0 := begin <-
+ y := ~discard =: ()
+      -> end =: x, 0
+
+// PARAM-ARITY: error: add takes 1 parameter(s)
+//--- param-arity.hssa
+rel f:
+x, 0 := begin <-
+ y := add 1, 2 =: x
+      -> end =: y, 0
+
+// CONSUME-ARITY: error: add consumes 1 value(s)
+//--- consume-arity.hssa
+rel f:
+x, 0 := begin <-
+ y := add 1 =: ()
+      -> end =: y, 0
+
+// PRODUCE-ARITY: error: add produces 1 value(s)
+//--- produce-arity.hssa
+rel f:
+x, 0 := begin <-
+ (y, z) := add 1 =: x
+      -> end =: (y, z), 0
+
+// MALFORMED: error: malformed pattern 'y('
+//--- malformed.hssa
+rel f:
+x, 0 := begin <-
+ y( := add 1 =: x
+      -> end =: y, 0
+
+// EMPTY-PART: error: malformed pattern 'a,,b'
+//--- empty-part.hssa
+rel f:
+x, 0 := begin <-
+ (a,,b) := euclidiv 2 =: x, x
+      -> end =: (a, b), 0

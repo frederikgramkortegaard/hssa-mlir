@@ -1,0 +1,9 @@
+// RUN: not hssa-translate --import-hssa %s 2>&1 | FileCheck %s
+// CHECK: import-invalid.hssa:6:1: error: unknown label 'L_nowhere'
+
+rel bad:
+n, 0 := begin <-
+        -> L_nowhere =: n, 0
+
+n, 0 := L1 <-
+        -> end =: n, 0

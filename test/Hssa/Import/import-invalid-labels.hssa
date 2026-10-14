@@ -1,0 +1,28 @@
+// Label/edge importer diagnostics. Each part trips exactly one error.
+// The 'unknown label' case lives in import-invalid.hssa.
+// RUN: split-file %s %t
+// RUN: not hssa-translate --import-hssa %t/targeted-twice.hssa 2>&1 | FileCheck %s --check-prefix=TARGETED-TWICE
+// RUN: not hssa-translate --import-hssa %t/label-arity.hssa 2>&1 | FileCheck %s --check-prefix=LABEL-ARITY
+
+// A label may be declared by at most one entry.
+// TARGETED-TWICE: error: label 'L1' targeted more than once
+//--- targeted-twice.hssa
+rel f:
+x, 0 := begin <-
+      -> end =: x, 0
+
+x, b := L1,L1 <-
+      -> L2 =: x, 0
+
+y, 0 := L2 <-
+      -> L1 =: y, 0
+
+// The payload must match the target block's argument count.
+// LABEL-ARITY: error: label 'L1' expects 1 value(s)
+//--- label-arity.hssa
+rel f:
+x, 0 := begin <-
+      -> L1 =: (x, x), 0
+
+y, 0 := L1 <-
+      -> end =: y, 0

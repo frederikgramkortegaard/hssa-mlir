@@ -1,0 +1,6 @@
+// .. misc math
+
+rel double:
+  v, 0 := begin <-
+  v.1 := ~euclidiv 2 =: v, 0 // v.1 = v*2 + 0 = 2v
+-> end =: v.1, 0

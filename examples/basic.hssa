@@ -1,0 +1,18 @@
+rel add_one:
+x1, 0 := begin <-
+ x2 := add 1 =: x1
+      -> end =: x2, 0
+
+rel checked_double rhs:
+lhs, 0 := begin <-
+ c   := dup rhs    =: ()
+ t   := add c      =: lhs
+ ()  := ~dup rhs   =: c
+ out := xor 0      =: t
+      -> end =: out, 0
+
+rel main:
+x, 0 := begin <-
+ y := add_one =: x
+ z := ~add_one =: y
+      -> end =: z, 0

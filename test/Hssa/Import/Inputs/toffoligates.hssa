@@ -1,0 +1,25 @@
+rel toffoli_flat:
+(a, b, c), 0 :=   begin <-
+                  -> E0,B1   =:   (b, c), a
+
+  (b, c), 0  :=     B1 <-
+                 -> E10,B11  =:     c, b
+
+    c, 0     :=    B11 <-
+                -> E111,E110 =:     (), c
+
+    (), c    := E110,E111 <-
+                   -> E11    =:     c, 0
+
+    c, b     :=  E10,E11 <-
+                    -> E1    =:   (b, c), 0
+
+  (b, c), a  :=   E0,E1 <-
+                   -> end    =: (a, b, c), 0
+
+rel toffoli a, b:
+    c, 0    :=   begin <-
+  t.a, t.b  :=   dup a, b   =:      ()
+t.x, t.y, z := toffoli_flat =: t.a, t.b, c
+     ()     :=   ~dup a, b  =:   t.x, t.y
+                  -> end    =:     z, 0

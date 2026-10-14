@@ -1,0 +1,27 @@
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// The imported program type-checks, is linear, and inverts.
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | hssa-opt
+
+// The degenerate N-ary dispatch form (the vtable's shape): a one-label edge
+// threads a *variable* selector as a trailing block argument, bound where the
+// entry selector is a variable and checked where it is a literal. This reuses
+// the payload machinery, so it threads through inversion and lowering for free.
+// CHECK-LABEL: func @dispatch
+// CHECK: hssa.exit ^[[L0:.*]](%{{.*}} : i32)
+// CHECK: ^[[L0]](%[[SEL:.*]]: i32):
+// A literal entry selector (0) checks the threaded value.
+// CHECK: hssa.dup(%{{.*}}) %[[SEL]] {inverted} : (i32, i32) -> ()
+// CHECK: hssa.exit ^[[L1:.*]](%{{.*}}, %{{.*}} : i32, i32)
+// A variable entry selector binds the threaded value.
+// CHECK: ^[[L1]](%{{.*}}: i32, %{{.*}}: i32):
+rel dispatch m:
+(), 0 := begin <-
+  i := dup m =: ()
+       -> L0 =: (), i
+(), 0 := L0 <-
+  r := dup 7 =: ()
+       -> L1 =: r, 0
+r, i := L1 <-
+  () := ~dup m =: i
+       -> end =: r, 0

@@ -1,0 +1,40 @@
+// Verbatim from Leridon/hssa (MIT License), programs/hssa/power.hssa.
+// Keep in sync with the reference corpus.
+rel l4mul x:
+y, 0 :=  begin <-
+res  :=  mul x, y   =:
+     := ~div res, x =:   y
+          -> end    =: res, 0
+
+
+rel power x:
+   p, 0     :=    begin <-
+                  -> Power    =:  (p, 1), 0
+
+(p1, y), c  := Recur,Power <-
+            :=   ~less y, 2   =:      c
+    c1      :=  equal 0, p1   =:
+                -> Loop,Exit  =: (p1, y), c1
+
+(0, xp), 0  :=    Exit <-
+                   -> end     =:    xp, 0
+
+(p2, y1), 0 :=    Loop <-
+    p3      :=     add -1     =:     p2
+    y2      :=    l4mul x     =:     y1
+                  -> Recur    =: (p3, y2), 0
+
+
+rel power.test:
+(),0 := begin <-
+8 := power 2 =: 3
+9 := power 3 =: 2
+256 := power 4 =: 4
+10000 := power 10 =: 4
+-> end =: (),0
+
+
+rel power.main:
+(), 0 := begin <-
+ res  := power 2  =:   10
+          -> end  =: res, 0

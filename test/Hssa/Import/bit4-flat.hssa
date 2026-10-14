@@ -1,0 +1,108 @@
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear | FileCheck %s
+
+// A reversible ripple-carry adder (bit4.hssa's flat path) that imports the
+// Toffoli gate from another file. The real bit4.hssa also defines ' / tuple-dup
+// relations beside these (add_alt, add, equal, ...); those use features outside
+// the supported fragment, so this fixture keeps only the flat-adder-reachable
+// relations -- all of which are linear, as --hssa-verify-linear confirms.
+// CHECK-DAG: func.func @toffoli
+// CHECK-DAG: func.func @add_2bit_flat
+// CHECK-DAG: func.func @add_4bit_flat
+import Inputs.toffoligates
+
+rel and a, b:
+(), 0 :=   begin <-
+  c   := toffoli a, b =:   0
+            -> end    =: c, 0
+
+rel xor a:
+b, 0 :=   begin <-
+  c  := toffoli a, 1 =:   b
+           -> end    =: c, 0
+
+rel not:
+a, 0 :=   begin <-
+  b  := toffoli 1, 1 =:   a
+           -> end    =: b, 0
+
+rel or a, b:
+(), 0 :=   begin <-
+ t.0  := toffoli a, 1 =:   0
+ t.1  := toffoli b, 1 =:  t.0
+  c   := toffoli a, b =:  t.1
+            -> end    =: c, 0
+
+rel xor.test:
+(), 0 := begin <-
+  0   :=   xor 0  =:   0
+  1   :=   xor 0  =:   1
+  1   :=   xor 1  =:   0
+  0   :=   xor 1  =:   1
+          -> end  =: (), 0
+
+rel or.test:
+(), 0 := begin <-
+  0   :=  or 0, 0 =:   ()
+  1   :=  or 0, 1 =:   ()
+  1   :=  or 1, 0 =:   ()
+  1   :=  or 1, 1 =:   ()
+          -> end  =: (), 0
+
+rel cnot a:
+b, 0 := begin <-
+  c  :=   xor a  =:   b
+         -> end  =: c, 0
+
+rel majority:
+(a.0, b.0, c.0), 0 :=     begin <-
+        b.1        :=     cnot c.0     =:         b.0
+        a.1        :=     cnot c.0     =:         a.0
+        c.1        := toffoli a.1, b.1 =:         c.0
+                           -> end      =: (a.1, b.1, c.1), 0
+
+rel unmajority:
+(a.0, b.0, c.0), 0 :=     begin <-
+        c.1        := toffoli a.0, b.0 =:         c.0
+        a.1        :=     cnot c.1     =:         a.0
+        b.1        :=     cnot a.1     =:         b.0
+                           -> end      =: (a.1, b.1, c.1), 0
+
+rel add_4bit_flat:
+((a3, a2, a1, a0), (b3, b2, b1, b0)), 0 :=  begin <-
+               x0, y0, t0               :=  majority  =:                0, b0, a0
+               x1, y1, t1               :=  majority  =:                t0, b1, a1
+               x2, y2, t2               :=  majority  =:                t1, b2, a2
+               x3, y3, t3               :=  majority  =:                t2, b3, a3
+               u3, c3, v3               := unmajority =:                x3, y3, t3
+               u2, c2, v2               := unmajority =:                x2, y2, u3
+               u1, c1, v1               := unmajority =:                x1, y1, u2
+               0, c0, v0                := unmajority =:                x0, y0, u1
+                                             -> end   =: ((v3, v2, v1, v0), (c3, c2, c1, c0)), 0
+
+rel add_2bit_flat:
+((a1, a0), (b1, b0)), 0 :=  begin <-
+       x0, y0, t0       :=  majority  =:        0, b0, a0
+       x1, y1, t1       :=  majority  =:        t0, b1, a1
+       u1, c1, v1       := unmajority =:        x1, y1, t1
+       0, c0, v0        := unmajority =:        x0, y0, u1
+                             -> end   =: ((v1, v0), (c1, c0)), 0
+
+rel add2.test:
+     (), 0     :=    begin <-
+(0, 0), (0, 0) := add_2bit_flat =: (0, 0), (0, 0)
+(0, 0), (0, 1) := add_2bit_flat =: (0, 0), (0, 1)
+(0, 0), (1, 0) := add_2bit_flat =: (0, 0), (1, 0)
+(0, 0), (1, 1) := add_2bit_flat =: (0, 0), (1, 1)
+(0, 1), (0, 1) := add_2bit_flat =: (0, 1), (0, 0)
+(0, 1), (1, 0) := add_2bit_flat =: (0, 1), (0, 1)
+(0, 1), (1, 1) := add_2bit_flat =: (0, 1), (1, 0)
+(0, 1), (0, 0) := add_2bit_flat =: (0, 1), (1, 1)
+(1, 0), (1, 0) := add_2bit_flat =: (1, 0), (0, 0)
+(1, 0), (1, 1) := add_2bit_flat =: (1, 0), (0, 1)
+(1, 0), (0, 0) := add_2bit_flat =: (1, 0), (1, 0)
+(1, 0), (0, 1) := add_2bit_flat =: (1, 0), (1, 1)
+(1, 1), (1, 1) := add_2bit_flat =: (1, 1), (0, 0)
+(1, 1), (0, 0) := add_2bit_flat =: (1, 1), (0, 1)
+(1, 1), (0, 1) := add_2bit_flat =: (1, 1), (1, 0)
+(1, 1), (1, 0) := add_2bit_flat =: (1, 1), (1, 1)
+                      -> end    =:      (), 0

@@ -1,0 +1,11 @@
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// Eager cross-file import: `import` merges every relation from the named file
+// into one flat module, so a call resolves across files.
+// CHECK-DAG: func.func @inc
+// CHECK-DAG: func.func @usesinc
+import Inputs.import-lib
+
+rel usesinc a:
+x, 0 := begin <-
+ y := inc a =: x
+   -> end =: y, 0

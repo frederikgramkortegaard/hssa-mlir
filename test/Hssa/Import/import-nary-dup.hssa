@@ -1,0 +1,25 @@
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear | FileCheck %s
+
+// dup over a pair of parameters is a single op in the reference (dup a, b); we
+// split it into two independent 1-ary dups so the parameters stay read-only
+// (packing them into a tuple would consume values the program still uses). The
+// result is linear, as --hssa-verify-linear confirms by not erroring.
+// CHECK-LABEL: func @paircopy
+// CHECK: hssa.dup(%arg0) : (i32) -> i32
+// CHECK: hssa.dup(%arg1) : (i32) -> i32
+// CHECK: hssa.dup(%arg0) %{{.*}} {inverted} : (i32, i32) -> ()
+// CHECK: hssa.dup(%arg1) %{{.*}} {inverted} : (i32, i32) -> ()
+rel paircopy a, b:
+(), 0 := begin <-
+ x, y := dup a, b =: ()
+  ()  := ~dup a, b =: x, y
+        -> end =: (), 0
+
+// id over a pair splits per leaf too: a positional swap becomes two 1-ary ids.
+// CHECK-LABEL: func @swap
+// CHECK: hssa.id %arg0 : i32
+// CHECK: hssa.id %arg1 : i32
+rel swap:
+(p, q), 0 := begin <-
+   b, a   := id =: p, q
+          -> end =: (b, a), 0

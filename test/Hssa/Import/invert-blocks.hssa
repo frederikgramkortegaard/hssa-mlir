@@ -1,0 +1,30 @@
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | FileCheck %s
+
+// Inverting a loop: the signature flips (param stays, consumed input and
+// result trade places), the forward exit condition (less) becomes the
+// backward entry check, the forward entry check (equal) becomes the
+// backward exit condition, and the final literal check becomes the
+// backward seed.
+// CHECK-LABEL: func @countdown(
+// CHECK-SAME: %[[N:.*]]: i32, %[[IN:.*]]: i32) -> i32
+// CHECK: %[[SEED:.*]] = hssa.dup(%{{.*}}) : (i32) -> i32
+// CHECK: hssa.exit ^bb2(%[[SEED]], %{{.*}} : i32, i32)
+// CHECK: ^bb1(%[[X:.*]]: i32):
+// CHECK: return %[[X]] : i32
+// CHECK: ^bb2(%[[V:.*]]: i32, %[[B:.*]]: i32):
+// CHECK: hssa.less(%{{.*}}, %[[V]]) %[[B]] {inverted} : (i32, i32, i32) -> ()
+// CHECK: %[[V1:.*]] = hssa.add(%{{.*}}) %[[V]] {inverted} : i32
+// CHECK: %[[BIT:.*]] = hssa.equal(%[[N]], %[[V1]]) : (i32, i32) -> i32
+// CHECK: hssa.cond_exit %[[BIT]], ^bb2(%[[V1]], %{{.*}} : i32, i32), ^bb1(%[[V1]] : i32)
+rel countdown n:
+x, 0 := begin <-
+    -> L1 =: x, 0
+
+v, l_in := L2,L1 <-
+ () := ~equal n, v =: l_in
+ v1 := add -1 =: v
+ l_out := less 0, v1 =: ()
+    -> L3,L2 =: v1, l_out
+
+0, 0 := L3 <-
+    -> end =: n, 0

@@ -1,0 +1,17 @@
+// A small self-contained HSSA program you can run end to end.
+//
+// `main` takes no input ("(), 0 := begin"), seeds the value 42, applies `inc`
+// once, then uncalls it ("~inc", which is inc's inverse), recovering 42.
+// Lowered to native code, the process exits 42. See the README "Usage" section.
+
+rel inc:
+n, 0 := begin <-
+ m := add 1 =: n
+     -> end =: m, 0
+
+rel main:
+(), 0 := begin <-
+ a := add 42 =: 0
+ b := inc    =: a
+ c := ~inc   =: b
+     -> end =: c, 0

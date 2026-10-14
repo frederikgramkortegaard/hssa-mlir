@@ -1,0 +1,38 @@
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | FileCheck %s
+
+// Inverting a diamond (abs): the merge's provenance bit becomes the
+// backward branch selector, and successor order must follow the bit's
+// index semantics -- selector 0 must pick the inverse of the block that
+// was entered through the merge's FIRST label (L_neg_end, the negation
+// block), not the pass-through block. The forward branch condition (less)
+// becomes the backward merge check.
+
+// CHECK-LABEL: func @abs(
+// CHECK-SAME: %[[RES:.*]]: i32, %[[WAS:.*]]: i32) -> i32
+// CHECK: hssa.cond_exit %[[WAS]], ^[[NEG:bb[0-9]+]](%[[RES]] : i32), ^[[POS:bb[0-9]+]](%[[RES]] : i32)
+// CHECK: ^[[MERGE:bb[0-9]+]](%[[N:.*]]: i32, %[[BIT:.*]]: i32):
+// CHECK: hssa.less(%[[N]], %{{.*}}) %[[BIT]] {inverted}
+// CHECK: return %[[N]] : i32
+// CHECK: ^[[POS]](%[[P:.*]]: i32):
+// CHECK-NOT: hssa.mul
+// CHECK: hssa.exit ^[[MERGE]](%[[P]], %{{.*}} : i32, i32)
+// CHECK: ^[[NEG]](%[[M:.*]]: i32):
+// CHECK: %[[UN:.*]] = hssa.mul(%[[M]], %{{.*}}) : (i32, i32) -> i32
+// CHECK: hssa.mul(%[[UN]], %{{.*}}) %[[M]] {inverted}
+// CHECK: hssa.exit ^[[MERGE]](%[[UN]], %{{.*}} : i32, i32)
+
+rel abs:
+n, 0 := begin <-
+ c := less n, 0 =: ()
+    -> L_pos,L_neg =: n, c
+
+n, 0 := L_pos <-
+    -> L_pos_end =: n, 0
+
+n, 0 := L_neg <-
+ n1 := mul n, -1 =: ()
+ () := ~mul n1, -1 =: n
+    -> L_neg_end =: n1, 0
+
+res, was_positive := L_neg_end,L_pos_end <-
+    -> end =: (res, was_positive), 0

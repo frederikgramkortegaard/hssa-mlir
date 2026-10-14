@@ -1,0 +1,61 @@
+// Thin test for the buddy-memory stdlib library: it imports the REAL
+// stdlib/buddy.hssa (via a cross-file `import`, NOT a copy, so the two can
+// never drift) and adds only a `main` round-trip driver. The library is
+// well-formed HSSA: it imports, type-checks linear, inverts, lowers, and the
+// allocator runs natively and reversibly.
+//
+// `import ....stdlib.buddy` resolves from this file's directory
+// (test/Hssa/Import/) up three parents to the repo root, then into
+// stdlib/buddy.hssa -- in the importer's dot-path convention a run of N dots is
+// `/` followed by (N-1) copies of `../`, so the four leading dots climb three
+// directories and `.stdlib.buddy` walks back down (see
+// lib/Hssa/HssaImporter.cpp resolveImport). The eager importer merges every
+// library relation into this module, so the checks below run against the actual
+// library body, not a duplicate.
+//
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | hssa-opt
+// The native round-trip (the `main` driver below) sets up an arena, allocates
+// two blocks via buddy_alloc, frees them in OPPOSITE order via ~buddy_alloc, and
+// tears the arena down; it returns 0 iff every op and its inverse execute
+// cleanly. Free order matters: the reversible buddy only re-coalesces fully when
+// deallocation is exactly opposite of allocation (Cservenka thesis p.64) -- so
+// this driver frees LIFO.
+//
+// NOTE: lli's default ORC JIT crashes non-deterministically on LLVM 22.1.4;
+// --jit-kind=mcjit is deterministically stable. Use MCJIT here.
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-resolve-uncalls --canonicalize --convert-hssa-to-arith | mlir-opt --convert-to-llvm | mlir-translate --mlir-to-llvmir | lli --jit-kind=mcjit
+
+import ....stdlib.buddy
+
+// The CHECK lines verify the imported library body merged in from
+// stdlib/buddy.hssa (order-independent -- we only assert everything is present).
+// CHECK-DAG: func @_buddy_double
+// CHECK-DAG: func @_buddy_sizeclass
+// CHECK-DAG: func @_buddy_manage
+// CHECK-DAG: func @buddy_init_new
+// CHECK-DAG: func @_buddy_malloc1
+// CHECK-DAG: func @buddy_alloc
+// CHECK-DAG: func @main
+// the recursive core's reversible branch + self-recursion, and the memory ops:
+// CHECK-DAG: hssa.cond_exit
+// CHECK-DAG: hssa.call @_buddy_malloc1
+// CHECK-DAG: hssa.mmem.new
+// CHECK-DAG: hssa.mmem.allocate
+// CHECK-DAG: hssa.mmem.readwrite
+// CHECK-DAG: hssa.call @_buddy_manage
+
+// Native reversible round-trip over the whole allocator: init a 16-cell arena,
+// allocate two class-2 blocks (the first splits the pool down, the second pops),
+// free them in OPPOSITE order (b2 then b1) so the buddy fully re-coalesces, then
+// tear the arena down. Returns 0 iff every step and its inverse run cleanly.
+rel main:
+  (), 0 := begin <-
+  heap, p := buddy_init_new 16 =: ()
+  heap.1, b1 := buddy_alloc p, 2 =: heap
+  heap.2, b2 := buddy_alloc p, 2 =: heap.1
+  heap.3 := ~buddy_alloc p, 2 =: heap.2, b2
+  heap.4 := ~buddy_alloc p, 2 =: heap.3, b1
+  () := ~buddy_init_new 16 =: heap.4, p
+    -> end =: 0, 0

@@ -1,0 +1,31 @@
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// The imported program is well-formed HSSA: it type-checks, is linear, and
+// inverts.
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | hssa-opt
+
+// The importer infers the heap type (!hssa.mem) from the memory primitives,
+// threads it single-assignment, turns `()` in a cell position into the unit
+// value, and types every other value as i32.
+// CHECK-LABEL: func @memtest
+// A no-arg mmem.new imports with an explicit default-1024 size parameter (the
+// additive dynamic-sizing extension; the default reproduces the reference heap).
+// CHECK: %[[K:.*]] = arith.constant 1024 : i32
+// CHECK: %[[M:.*]] = hssa.mmem.new(%[[K]]) : (i32) -> !hssa.mem
+// CHECK: %[[M1:.*]], %[[P:.*]] = hssa.mmem.allocate(%{{.*}}) %[[M]] : (i32, !hssa.mem) -> (!hssa.mem, i32)
+// CHECK: %[[M2:.*]], %[[Z:.*]] = hssa.mmem.readwrite(%[[P]]) %[[M1]], %{{.*}} : (i32, !hssa.mem, i32) -> (!hssa.mem, i32)
+// CHECK: hssa.dup(%{{.*}}) %[[Z]] {inverted} : (i32, i32) -> ()
+// A `()` in the output pattern reads the cell's old value as unit.
+// CHECK: hssa.mmem.readwrite(%[[P]]) %[[M2]], %{{.*}} : (i32, !hssa.mem, i32) -> (!hssa.mem, !hssa.unit)
+// CHECK: hssa.mmem.allocate(%{{.*}}) %{{.*}}, %[[P]] {inverted} : (i32, !hssa.mem, i32) -> !hssa.mem
+// CHECK: hssa.mmem.new(%{{.*}}) %{{.*}} {inverted} : (i32, !hssa.mem) -> ()
+rel memtest:
+(), 0 := begin <-
+  m := mmem.new =: ()
+  m.1, p := mmem.allocate 1 =: m
+  m.2, z := mmem.readwrite p =: m.1, 7
+  () := ~dup 0 =: z
+  m.3, () := mmem.readwrite p =: m.2, 0
+  m.4 := ~mmem.allocate 1 =: m.3, p
+  () := ~mmem.new =: m.4
+    -> end =: (), 0

@@ -1,0 +1,54 @@
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+
+// A conditional (abs, from the reference corpus): branch consumes the bit,
+// the merge block's trailing argument receives the 0-based label index.
+// CHECK-LABEL: func @abs(
+// CHECK: %[[C:.*]] = hssa.less(%{{.*}}, %{{.*}}) : (i32, i32) -> i32
+// CHECK: hssa.cond_exit %[[C]], ^bb1(%{{.*}} : i32), ^bb2(%{{.*}} : i32)
+// CHECK: ^bb1(%[[P:.*]]: i32):
+// CHECK: hssa.exit ^bb3(%[[P]], %{{.*}} : i32, i32)
+// CHECK: ^bb2(%[[N:.*]]: i32):
+// CHECK: hssa.mul
+// CHECK: hssa.exit ^bb3(
+// CHECK: ^bb3(%[[RES:.*]]: i32, %[[WAS:.*]]: i32):
+// CHECK: return %[[RES]], %[[WAS]] : i32, i32
+rel abs:
+n, 0 := begin <-
+ c := less n, 0 =: ()
+    -> L_pos,L_neg =: n, c
+
+n, 0 := L_pos <-
+    -> L_pos_end =: n, 0
+
+n, 0 := L_neg <-
+ n1 := mul n, -1 =: ()
+ () := ~mul n1, -1 =: n
+    -> L_neg_end =: n1, 0
+
+res, was_positive := L_neg_end,L_pos_end <-
+    -> end =: (res, was_positive), 0
+
+// A loop: the header merges entry and back-edge; the provenance bit is
+// destroyed by the invariant check; a literal in an entry pattern is an
+// assertion (check-and-consume).
+// CHECK-LABEL: func @countdown(
+// CHECK: hssa.exit ^bb1(
+// CHECK: ^bb1(%[[V:.*]]: i32, %[[B:.*]]: i32):
+// CHECK: hssa.equal(%{{.*}}, %[[V]]) %[[B]] {inverted}
+// CHECK: %[[OUT:.*]] = hssa.less
+// CHECK: hssa.cond_exit %[[OUT]], ^bb2(%{{.*}} : i32), ^bb1(
+// CHECK: ^bb2(%[[Z:.*]]: i32):
+// CHECK: hssa.dup(%{{.*}}) %[[Z]] {inverted}
+// CHECK: return
+rel countdown n:
+x, 0 := begin <-
+    -> L1 =: x, 0
+
+v, l_in := L2,L1 <-
+ () := ~equal n, v =: l_in
+ v1 := add -1 =: v
+ l_out := less 0, v1 =: ()
+    -> L3,L2 =: v1, l_out
+
+0, 0 := L3 <-
+    -> end =: n, 0

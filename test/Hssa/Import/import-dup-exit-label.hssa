@@ -1,0 +1,20 @@
+// Regression: labels name edges, so each label may be jumped to at most
+// once. Two exits to the same label used to import cleanly, producing a
+// two-predecessor merge block with no provenance bit -- an irreversible
+// join that --hssa-invert cannot handle but strict mode still certified.
+// RUN: not hssa-translate --import-hssa %s 2>&1 | FileCheck %s
+// CHECK: error: label 'L3' is jumped to more than once
+
+rel bad:
+n, 0 := begin <-
+ c := less n, 0 =: ()
+    -> L1,L2 =: n, c
+
+n, 0 := L1 <-
+    -> L3 =: n, 0
+
+n, 0 := L2 <-
+    -> L3 =: n, 0
+
+m, 0 := L3 <-
+    -> end =: m, 0

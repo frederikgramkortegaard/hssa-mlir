@@ -1,0 +1,14 @@
+// The reference grammar treats ':=' and '=:' as interchangeable separators
+// (asgn_delim = ASGN | NGSA), used for the output separator, the input
+// separator, entries, and exits alike. RTM, for instance, writes ':=' where the
+// other verified programs write '=:' for inputs. The importer must accept either
+// token at either position.
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+
+// CHECK-LABEL: func @f
+// CHECK: %[[Y:.*]] = hssa.add(%{{.*}}) %arg0 : i32
+// CHECK: return %[[Y]] : i32
+rel f:
+x, 0 := begin <-
+ y := add 1 := x
+      -> end := y, 0

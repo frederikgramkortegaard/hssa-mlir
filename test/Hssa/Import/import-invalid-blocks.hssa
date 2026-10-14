@@ -1,0 +1,119 @@
+// Block-structure importer diagnostics. Each part trips exactly one error.
+// RUN: split-file %s %t
+// RUN: not hssa-translate --import-hssa %t/not-begin.hssa 2>&1 | FileCheck %s --check-prefix=NOT-BEGIN
+// RUN: not hssa-translate --import-hssa %t/no-end.hssa 2>&1 | FileCheck %s --check-prefix=NO-END
+// RUN: not hssa-translate --import-hssa %t/end-twice.hssa 2>&1 | FileCheck %s --check-prefix=END-TWICE
+// RUN: not hssa-translate --import-hssa %t/no-body.hssa 2>&1 | FileCheck %s --check-prefix=NO-BODY
+// RUN: not hssa-translate --import-hssa %t/missing-exit.hssa 2>&1 | FileCheck %s --check-prefix=MISSING-EXIT
+// RUN: not hssa-translate --import-hssa %t/entry-before-exit.hssa 2>&1 | FileCheck %s --check-prefix=ENTRY-BEFORE-EXIT
+// RUN: not hssa-translate --import-hssa %t/stmt-before-entry.hssa 2>&1 | FileCheck %s --check-prefix=STMT-BEFORE-ENTRY
+// RUN: not hssa-translate --import-hssa %t/three-labels.hssa 2>&1 | FileCheck %s --check-prefix=THREE-LABELS
+// RUN: not hssa-translate --import-hssa %t/entry-pattern.hssa 2>&1 | FileCheck %s --check-prefix=ENTRY-PATTERN
+// RUN: not hssa-translate --import-hssa %t/entry-sel.hssa 2>&1 | FileCheck %s --check-prefix=ENTRY-SEL
+// RUN: not hssa-translate --import-hssa %t/exit-sel.hssa 2>&1 | FileCheck %s --check-prefix=EXIT-SEL
+// RUN: not hssa-translate --import-hssa %t/exit-missing-sep.hssa 2>&1 | FileCheck %s --check-prefix=EXIT-MISSING-SEP
+// RUN: not hssa-translate --import-hssa %t/rel-header.hssa 2>&1 | FileCheck %s --check-prefix=REL-HEADER
+// RUN: not hssa-translate --import-hssa %t/rel-no-name.hssa 2>&1 | FileCheck %s --check-prefix=REL-NO-NAME
+// RUN: not hssa-translate --import-hssa %t/stmt-before-rel.hssa 2>&1 | FileCheck %s --check-prefix=STMT-BEFORE-REL
+
+// NOT-BEGIN: error: the first block must enter from 'begin'
+//--- not-begin.hssa
+rel f:
+x, 0 := L1 <-
+      -> end =: x, 0
+
+// NO-END: error: relation 'f' never exits through 'end'
+//--- no-end.hssa
+rel f:
+x, 0 := begin <-
+      -> L1 =: x, 0
+
+x, 0 := L1 <-
+      -> L2 =: x, 0
+
+// END-TWICE: error: 'end' is used more than once
+//--- end-twice.hssa
+rel f:
+x, 0 := begin <-
+ c := less x, 0 =: ()
+      -> L1,L2 =: x, c
+
+x, 0 := L1 <-
+      -> end =: x, 0
+
+x, 0 := L2 <-
+      -> end =: x, 0
+
+// NO-BODY: error: relation 'f' has no body
+//--- no-body.hssa
+rel f:
+rel g:
+x, 0 := begin <-
+      -> end =: x, 0
+
+// MISSING-EXIT: error: block is missing its exit line
+//--- missing-exit.hssa
+rel f:
+x, 0 := begin <-
+ y := add 1 =: x
+
+// ENTRY-BEFORE-EXIT: error: block entry before the previous block's exit
+//--- entry-before-exit.hssa
+rel f:
+x, 0 := begin <-
+y, 0 := L1 <-
+      -> end =: y, 0
+
+// STMT-BEFORE-ENTRY: error: expected a block entry 'pattern, sel := label(s) <-'
+//--- stmt-before-entry.hssa
+rel f:
+-> end =: x, 0
+
+// A three-label exit is a valid N-ary switch, but like any multi-label exit it
+// must consume a selector variable, not the trivial 0.
+// THREE-LABELS: error: multi-label exits consume a selector variable
+//--- three-labels.hssa
+rel f:
+x, 0 := begin <-
+      -> L1,L2,L3 =: x, 0
+
+// ENTRY-PATTERN: error: expected entry pattern 'values, sel'
+//--- entry-pattern.hssa
+rel f:
+x := begin <-
+      -> end =: x, 0
+
+// ENTRY-SEL: error: the 'begin' entry takes selector 0
+//--- entry-sel.hssa
+rel f:
+x, 1 := begin <-
+      -> end =: x, 0
+
+// EXIT-SEL: error: the 'end' exit takes selector 0
+//--- exit-sel.hssa
+rel f:
+x, 0 := begin <-
+      -> end =: x, 1
+
+// EXIT-MISSING-SEP: error: exit is missing its ':=' / '=:' separator
+//--- exit-missing-sep.hssa
+rel f:
+x, 0 := begin <-
+      -> end x, 0
+
+// REL-HEADER: error: expected 'rel name [params]:'
+//--- rel-header.hssa
+rel f
+x, 0 := begin <-
+      -> end =: x, 0
+
+// REL-NO-NAME: error: relation is missing a name
+//--- rel-no-name.hssa
+rel :
+x, 0 := begin <-
+      -> end =: x, 0
+
+// STMT-BEFORE-REL: error: expected 'rel name:' before statements
+//--- stmt-before-rel.hssa
+x, 0 := begin <-
+      -> end =: x, 0

@@ -1,0 +1,169 @@
+// buddy.hssa: a clean HSSA transcription of Cservenka's reversible buddy
+// allocator (MSc thesis, Listing 3.3), in a direct heap-threading style
+// (no OO vtable/_this/mmem.read indirection, no nested pairs), rather than
+// the verbose form the reference compiler emits from ROOPL++.
+//
+// Memory model (one mmem heap): the free-list heads table lives at low
+// addresses -- head[k] = cell[p + k] -- and blocks live above it; a free block
+// stores its intrusive next-pointer at its own cell M(block) = cell[block].
+//
+// free = ~buddy_alloc (our --hssa-invert). PER CSERVENKA (thesis p.64):
+// reversible buddy "can only merge blocks at the start of the free list", so
+// deallocation that is NOT exactly opposite of allocation order does not
+// re-coalesce to one block (Fig 4.11) -- this is a DOCUMENTED design limitation,
+// not a bug. Opposite-order (LIFO) free round-trips to the pristine heap.
+
+// Multiply by two, reversibly (euclidiv is in -> (quotient, remainder); its
+// inverse reconstructs quotient*divisor+remainder).
+rel _buddy_double:
+  v, 0 := begin <-
+  v.1 := ~euclidiv 2 =: v, 0
+    -> end =: v.1, 0
+
+// log2(_size), asserting _size is a power of two (traps otherwise).
+rel _buddy_sizeclass _size:
+    (), 0 := begin <-
+            -> L0 =: 1, 0, 0
+    csize, counter, _j := L0, L1 <-
+    c1 := greater csize, 1 =: ()
+    () := ~dup c1 =: _j
+    () := ~greater csize, 1 =: c1
+    cont := less csize, _size =: ()
+            -> done, body =: csize, counter, cont
+    csize, counter, 0 := body <-
+    csize.1   := ~euclidiv 2 =: csize, 0
+    counter.1 := add 1 =: counter
+            -> L1 =: csize.1, counter.1, 0
+    csize, counter, 0 := done <-
+    () := ~dup _size =: csize
+            -> end =: counter, 0
+
+// Seed a pre-allocated arena: publish the single initial free block on the top
+// usable class's head. head[k] = cell[p+k]; pool = p + counter + 1.
+rel _buddy_manage _size:
+  heap, p, 0 := begin <-
+  counter := _buddy_sizeclass _size =: ()
+  t := add p =: counter
+  tc := dup t =: ()
+  slot := sub 1 =: t
+  pool := add 1 =: tc
+  heap.1, old := mmem.readwrite slot =: heap, pool
+  () := ~dup 0 =: old
+  t2 := ~sub 1 =: slot
+  counter2 := ~add p =: t2
+  () := ~_buddy_sizeclass _size =: counter2
+    -> end =: heap.1, p, 0
+
+// Make a fresh arena and manage it.
+rel buddy_init_new _size:
+  (), 0 := begin <-
+  heap        := mmem.new _size       =: ()
+  heap.1, p   := mmem.allocate _size  =: heap
+  heap.2, p.1 := _buddy_manage _size   =: heap.1, p
+    -> end =: heap.2, p.1, 0
+
+// The recursive core (Listing 3.3). _p_base = heads-table base; _osize = target
+// size. Threads heap, p, counter, csize. head[counter] = cell[_p_base+counter];
+// M(p) = cell[p].
+rel _buddy_malloc1 _p_base, _osize:
+  heap, p, counter, csize, 0 := begin <-
+  c_outer := less csize, _osize =: ()
+            -> stay, climb =: heap, p, counter, csize, c_outer
+
+  heap, p, counter, csize, 0 := climb <-
+  counter.1 := add 1 =: counter
+  csize.1   := _buddy_double =: csize
+  heap.1, p.1, counter.2, csize.2 := _buddy_malloc1 _p_base, _osize =: heap, p, counter.1, csize.1
+  csize.3   := ~_buddy_double =: csize.2
+  counter.3 := ~add 1 =: counter.2
+            -> Mouter1 =: heap.1, p.1, counter.3, csize.3, 0
+
+  heap, p, counter, csize, 0 := stay <-
+  kc := dup counter =: ()
+  pb := dup _p_base =: ()
+  hk := add pb =: kc
+  heap.1, h := mmem.readwrite hk =: heap, 0
+  c_inner := notequal h, 0 =: ()
+  heap.2, z := mmem.readwrite hk =: heap.1, h
+  () := ~dup 0 =: z
+  kc2 := ~add pb =: hk
+  () := ~dup _p_base =: pb
+  () := ~dup counter =: kc2
+            -> split, pop =: heap.2, p, counter, csize, c_inner
+
+  heap, p, counter, csize, 0 := pop <-
+  kc := dup counter =: ()
+  pb := dup _p_base =: ()
+  hk := add pb =: kc
+  heap.1, block := mmem.readwrite hk =: heap, 0
+  bc := dup block =: ()
+  p.1 := add p =: block
+  () := ~dup 0 =: p
+  heap.2, next := mmem.readwrite bc =: heap.1, 0
+  heap.3, z := mmem.readwrite hk =: heap.2, next
+  () := ~dup 0 =: z
+  () := ~dup p.1 =: bc
+  kc2 := ~add pb =: hk
+  () := ~dup _p_base =: pb
+  () := ~dup counter =: kc2
+            -> Minner1 =: heap.3, p.1, counter, csize, 0
+
+  heap, p, counter, csize, 0 := split <-
+  counter.1 := add 1 =: counter
+  csize.1   := _buddy_double =: csize
+  heap.1, p.1, counter.2, csize.2 := _buddy_malloc1 _p_base, _osize =: heap, p, counter.1, csize.1
+  csize.3   := ~_buddy_double =: csize.2
+  counter.3 := ~add 1 =: counter.2
+  kc := dup counter.3 =: ()
+  pb := dup _p_base =: ()
+  hk := add pb =: kc
+  pc := dup p.1 =: ()
+  heap.2, z := mmem.readwrite hk =: heap.1, pc
+  () := ~dup 0 =: z
+  kc2 := ~add pb =: hk
+  () := ~dup _p_base =: pb
+  () := ~dup counter.3 =: kc2
+  csc := dup csize.3 =: ()
+  p.2 := add csc =: p.1
+  () := ~dup csize.3 =: csc
+            -> Minner0 =: heap.2, p.2, counter.3, csize.3, 0
+
+  heap, p, counter, csize, _j := Minner0, Minner1 <-
+  kc := dup counter =: ()
+  pb := dup _p_base =: ()
+  hk := add pb =: kc
+  heap.1, h := mmem.readwrite hk =: heap, 0
+  csc := dup csize =: ()
+  ps := sub csc =: p
+  hc := dup h =: ()
+  d1 := notequal ps, hc =: ()
+  d2 := equal h, 0 =: ()
+  w := or d1, d2 =: ()
+  () := ~dup w =: _j
+  () := ~or d1, d2 =: w
+  () := ~equal h, 0 =: d2
+  () := ~notequal ps, hc =: d1
+  () := ~dup h =: hc
+  p.1 := ~sub csc =: ps
+  () := ~dup csize =: csc
+  heap.2, z := mmem.readwrite hk =: heap.1, h
+  () := ~dup 0 =: z
+  kc2 := ~add pb =: hk
+  () := ~dup _p_base =: pb
+  () := ~dup counter =: kc2
+            -> Mouter0 =: heap.2, p.1, counter, csize, 0
+
+  heap, p, counter, csize, _j := Mouter0, Mouter1 <-
+  c := less csize, _osize =: ()
+  () := ~dup c =: _j
+  () := ~less csize, _osize =: c
+            -> end =: heap, p, counter, csize, 0
+
+// Public wrapper: seed recursion state (p=0, counter=0, csize=1), recurse, then
+// assert counter/csize restored. free = ~buddy_alloc.
+rel buddy_alloc _p_base, _osize:
+  heap, 0 := begin <-
+  heap.1, p, counter, csize := _buddy_malloc1 _p_base, _osize =: heap, 0, 0, 1
+  () := ~dup 0 =: counter
+  () := ~dup 1 =: csize
+    -> end =: heap.1, p, 0

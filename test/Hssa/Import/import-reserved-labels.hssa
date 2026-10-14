@@ -1,0 +1,34 @@
+// Regression: 'begin' and 'end' are reserved -- they may not re-appear as
+// edge labels, and 'end' cannot share a conditional exit.
+// RUN: split-file %s %t
+// RUN: not hssa-translate --import-hssa %t/begin-entry.hssa 2>&1 | FileCheck %s --check-prefix=BEGIN
+// RUN: not hssa-translate --import-hssa %t/end-entry.hssa 2>&1 | FileCheck %s --check-prefix=END
+// RUN: not hssa-translate --import-hssa %t/end-pair.hssa 2>&1 | FileCheck %s --check-prefix=PAIR
+
+// BEGIN: error: 'begin' is reserved
+//--- begin-entry.hssa
+rel f:
+x, 0 := begin <-
+    -> L1 =: x, 0
+
+y, 0 := begin <-
+    -> end =: y, 0
+
+// END: error: 'end' is reserved
+//--- end-entry.hssa
+rel f:
+x, 0 := begin <-
+    -> end =: x, 0
+
+y, 0 := end <-
+    -> L1 =: y, 0
+
+// PAIR: error: 'end' must be an exit's only label
+//--- end-pair.hssa
+rel f:
+x, 0 := begin <-
+ c := less x, 0 =: ()
+    -> end,L1 =: x, c
+
+y, 0 := L1 <-
+    -> end =: y, 0

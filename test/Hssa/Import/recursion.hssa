@@ -1,0 +1,58 @@
+// Reversible RECURSION end-to-end: a relation that calls itself imports,
+// type-checks linear, inverts, has its uncall resolved, lowers, and runs
+// natively -- including `~rec` (free = uncall of a recursive relation). This is
+// the toolchain capability that Cservenka's recursive buddy `malloc1` depends
+// on, so it is load-bearing, not a toy.
+//
+// `rec(_n)(acc) = acc + _n`, built by self-recursion: base case `_n==0` returns
+// acc; otherwise `rec(_n-1)(acc) + 1`. The reversible branch reconverges at a
+// merge block whose provenance `_j` is asserted against the recomputed branch
+// condition (`~dup cc =: _j`), exactly the pattern a reversible `if` needs.
+//
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | hssa-opt
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-resolve-uncalls
+// The self-checking main returns 0 iff rec(5)(10)==15 (forward) AND ~rec
+// recovers 10 (reverse). A wrong value traps. MCJIT: the default ORC JIT is
+// flaky on LLVM 22.1.4.
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-resolve-uncalls --canonicalize --convert-hssa-to-arith | mlir-opt --convert-to-llvm | mlir-translate --mlir-to-llvmir | lli --jit-kind=mcjit
+
+// CHECK-LABEL: func @rec
+// The recursive self-call and the reversible branch:
+// CHECK: hssa.cond_exit
+// CHECK: hssa.call @rec
+rel rec _n:
+  acc, 0 := begin <-
+  c := greater _n, 0 =: ()
+        -> base, recurse =: acc, c
+  acc, 0 := base <-
+        -> M0 =: acc, 0
+  acc, 0 := recurse <-
+  // n1 = _n - 1 (dup'd out of the read-only parameter via subfrom's literal)
+  n1 := subfrom _n =: 1
+  // the recursive call; n1 is read (parameter), not consumed
+  acc1 := rec n1 =: acc
+  // uncompute n1 so nothing leaks (the dual of the pre-call setup)
+  one := ~subfrom _n =: n1
+  () := ~dup 1 =: one
+  acc2 := add 1 =: acc1
+        -> M1 =: acc2, 0
+  // merge: provenance _j is tied to the recomputed branch condition
+  acc, _j := M0, M1 <-
+  cc := greater _n, 0 =: ()
+  () := ~dup cc =: _j
+  () := ~greater _n, 0 =: cc
+        -> end =: acc, 0
+
+// CHECK-LABEL: func @main
+rel main:
+  (), 0 := begin <-
+  acc1 := rec 5 =: 10
+  // assert the forward result is 15 (consume a dup'd copy, keep acc1 live)
+  chk := dup acc1 =: ()
+  () := ~dup 15 =: chk
+  // free = uncall: ~rec recovers the original input 10
+  recovered := ~rec 5 =: acc1
+  () := ~dup 10 =: recovered
+        -> end =: 0, 0

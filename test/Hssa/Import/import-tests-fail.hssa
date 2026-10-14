@@ -1,0 +1,16 @@
+// Regression: ~tests.fail must import exactly like tests.fail -- the op
+// declares no 'inverted' attribute, and the importer used to stamp the
+// undeclared flag onto the inverted spelling.
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+
+// CHECK-LABEL: func @f(
+// CHECK: hssa.tests.fail
+// CHECK-NOT: inverted
+// CHECK: hssa.tests.fail
+// CHECK-NOT: inverted
+// CHECK: return
+rel f:
+x, 0 := begin <-
+ () := tests.fail =: ()
+ () := ~tests.fail =: ()
+      -> end =: x, 0

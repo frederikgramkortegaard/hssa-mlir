@@ -1,0 +1,4 @@
+rel inc a:
+x, 0 := begin <-
+ y := add a =: x
+   -> end =: y, 0

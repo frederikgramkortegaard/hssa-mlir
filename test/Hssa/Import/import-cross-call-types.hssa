@@ -1,0 +1,36 @@
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | hssa-opt
+
+// Cross-relation type inference: a variable's type can come from a callee's
+// signature, not only from a local memory primitive. Here `caller`'s heap
+// flows ONLY through the call to `touch` -- it never touches a builtin memory
+// op locally -- yet it must be typed !hssa.mem. The importer discovers this by
+// fixing every relation's signature in call-graph order (callees first) before
+// building bodies, so the call site reads its argument/result types from the
+// callee. The inverted call exercises the input/output role swap.
+
+// `touch` threads the heap locally (via mmem.readwrite), so its signature is
+// anchored without help: (ptr: i32, heap: !hssa.mem) -> (!hssa.mem, i32).
+// CHECK-LABEL: func @touch
+// CHECK-SAME: (%{{.*}}: i32, %{{.*}}: !hssa.mem) -> (!hssa.mem, i32)
+rel touch _addr:
+     _m, 0    :=       begin <-
+_m.0, _v      := mmem.readwrite _addr =:        _m, ()
+   _copy      :=       dup _v         =:        ()
+   _m.1, ()   := mmem.readwrite _addr =:   _m.0, _v
+                       -> end         =: (_m.1, _copy), 0
+
+// `caller`'s heap `_m`/`_m.0`/`_m.1` only ever flow through calls to `touch`,
+// yet all are typed !hssa.mem from touch's signature. The second call is
+// inverted (~touch): its input/output roles swap, so the heap still lands on
+// the right operand.
+// CHECK-LABEL: func @caller
+// CHECK-SAME: (%{{.*}}: !hssa.mem) -> !hssa.mem
+// CHECK: hssa.call @touch(%{{.*}}) %{{.*}} : (i32, !hssa.mem) -> (!hssa.mem, i32)
+// CHECK: hssa.call @touch(%{{.*}}) %{{.*}}, %{{.*}} {inverted} : (i32, !hssa.mem, i32) -> !hssa.mem
+rel caller:
+    _m, 0     :=    begin <-
+_m.0, _c      :=  touch 1   =:        _m
+   _m.1       := ~touch 1   =:   _m.0, _c
+                     -> end  =:      _m.1, 0

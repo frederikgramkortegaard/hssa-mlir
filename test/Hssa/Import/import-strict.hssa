@@ -1,0 +1,28 @@
+// --hssa-strict-reversible stamps every imported relation hssa.reversible,
+// so --hssa-verify-reversible rejects anything outside the (D,D) fragment.
+// Without the flag no attribute is stamped.
+// RUN: hssa-translate --import-hssa %s | FileCheck %s --check-prefix=DEFAULT
+// RUN: hssa-translate --import-hssa --hssa-strict-reversible %s | FileCheck %s --check-prefix=STRICT
+// RUN: hssa-translate --import-hssa --hssa-strict-reversible %s | not hssa-opt --hssa-verify-reversible 2>&1 | FileCheck %s --check-prefix=VERIFY
+
+// DEFAULT-LABEL: func @pure(
+// DEFAULT-NOT: hssa.reversible
+// DEFAULT-LABEL: func @leaky(
+// DEFAULT-NOT: hssa.reversible
+
+// STRICT-LABEL: func @pure(
+// STRICT-SAME: hssa.reversible
+// STRICT-LABEL: func @leaky(
+// STRICT-SAME: hssa.reversible
+
+// VERIFY: error: function is marked hssa.reversible but is classified (D,N)
+
+rel pure:
+x, 0 := begin <-
+ y := add 1 =: x
+      -> end =: y, 0
+
+rel leaky:
+x, 0 := begin <-
+ () := discard =: x
+      -> end =: (), 0

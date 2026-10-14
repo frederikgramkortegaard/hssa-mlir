@@ -1,0 +1,23 @@
+// Verbatim from Leridon/hssa (MIT License), programs/hssa/diss.hssa.
+// Keep in sync with the reference corpus.
+rel add_one:
+x1, 0 := begin <-         
+ x2   :=  add 1   =:  x1  
+          -> end  =: x2, 0
+
+
+rel abs:
+      n, 0        :=        begin <-                                 
+        c         :=       less n, 0        =:           ()          
+                         -> L_pos,L_neg     =:          n, c         
+
+      n, 0        :=        L_pos <-                                 
+                          -> L_pos_end      =:          n, 0         
+
+      n, 0        :=        L_neg <-                                 
+       n1         :=       mul n, -1        =:           ()          
+       ()         :=      ~mul n1, -1       =:           n           
+                          -> L_neg_end      =:         n1, 0         
+
+res, was_positive := L_neg_end,L_pos_end <-                          
+                             -> end         =: (res, was_positive), 0

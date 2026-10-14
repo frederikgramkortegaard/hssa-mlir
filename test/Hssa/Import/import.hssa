@@ -1,0 +1,74 @@
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+
+// CHECK-LABEL: func @add_one(
+// CHECK-SAME: %[[X:.*]]: i32)
+// CHECK: %[[C:.*]] = arith.constant 1 : i32
+// CHECK: %[[Y:.*]] = hssa.add(%[[C]]) %[[X]] : i32
+// CHECK: return %[[Y]] : i32
+rel add_one:
+x1, 0 := begin <-
+ x2 := add 1 =: x1
+      -> end =: x2, 0
+
+// Relation parameters become leading function arguments; the consumed
+// input is the last argument.
+// CHECK-LABEL: func @checked_add(
+// CHECK-SAME: %[[P:.*]]: i32, %[[IN:.*]]: i32)
+// CHECK: %[[CP:.*]] = hssa.dup(%[[P]]) : (i32) -> i32
+// CHECK: %[[T:.*]] = hssa.add(%[[CP]]) %[[IN]] : i32
+// CHECK: hssa.dup(%[[P]]) %[[CP]] {inverted} : (i32, i32) -> ()
+// CHECK: return %[[T]] : i32
+rel checked_add rhs:
+lhs, 0 := begin <-
+ c  := dup rhs  =: ()
+ t  := add c    =: lhs
+ () := ~dup rhs =: c
+      -> end =: t, 0
+
+// CHECK-LABEL: func @main(
+// CHECK-SAME: %[[X:.*]]: i32)
+// CHECK: %[[Y:.*]] = hssa.call @add_one() %[[X]] : (i32) -> i32
+// CHECK: %[[Z:.*]] = hssa.call @add_one() %[[Y]] {inverted} : (i32) -> i32
+// CHECK: return %[[Z]] : i32
+rel main:
+x, 0 := begin <-
+ y := add_one =: x
+ z := ~add_one =: y
+      -> end =: z, 0
+
+// Pair patterns flatten to multiple values.
+// CHECK-LABEL: func @fibstep(
+// CHECK-SAME: %[[A:.*]]: i32, %[[B:.*]]: i32) -> (i32, i32)
+// CHECK: %[[C:.*]] = hssa.add(%[[B]]) %[[A]] : i32
+// CHECK: return %[[B]], %[[C]] : i32, i32
+rel fibstep:
+(a, b), 0 := begin <-
+ c := add b =: a
+     -> end =: (b, c), 0
+
+// CHECK-LABEL: func @misc(
+// CHECK-SAME: %[[D:.*]]: i32, %[[N:.*]]: i32)
+// CHECK: %[[QR:.*]]:2 = hssa.euclidiv(%[[D]]) %[[N]] : (i32, i32) -> (i32, i32)
+// CHECK: %[[N2:.*]] = hssa.euclidiv(%[[D]]) %[[QR]]#0, %[[QR]]#1 {inverted} : (i32, i32, i32) -> i32
+// CHECK: %[[C:.*]] = hssa.greaterequal(%[[N2]], %{{.*}}) : (i32, i32) -> i32
+// CHECK: hssa.discard %[[C]] : i32
+// CHECK: return %[[N2]] : i32
+rel misc d:
+n, 0 := begin <-
+ (q, r) := euclidiv d =: n
+ n2 := ~euclidiv d =: (q, r)
+ c := greaterequal n2, 0 =: ()
+ () := discard =: c
+      -> end =: n2, 0
+
+// A literal in an output position is an assertion: check-and-consume.
+// CHECK-LABEL: func @lit_check(
+// CHECK-SAME: %[[X:.*]]: i32)
+// CHECK: %[[RES:.*]]:2 = hssa.call @fibstep() %{{.*}}, %[[X]] : (i32, i32) -> (i32, i32)
+// CHECK: %[[ONE:.*]] = arith.constant 1 : i32
+// CHECK: hssa.dup(%[[ONE]]) %[[RES]]#0 {inverted} : (i32, i32) -> ()
+// CHECK: return %[[RES]]#1 : i32
+rel lit_check:
+x, 0 := begin <-
+ (1, y) := fibstep =: (1, x)
+      -> end =: y, 0

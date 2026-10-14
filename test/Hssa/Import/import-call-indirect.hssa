@@ -1,0 +1,27 @@
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// The indirect call type-checks, is linear, and inverts.
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-invert | hssa-opt
+
+// Reversible indirect dispatch, the vtable mechanism in miniature: a relation
+// value is produced by dup, applied as a first-class relation (hssa.call_indirect
+// -- the callee is a %value, not a @symbol), then uncomputed by the inverse dup.
+// The callee is a read-only parameter of the call, consumed only by the ~dup,
+// so the value is created once and consumed once (linear).
+
+// CHECK-LABEL: func @caller
+// CHECK: %[[M:.*]] = hssa.dup(%{{.*}}) : (!hssa.rel) -> !hssa.rel
+// CHECK: hssa.call_indirect %[[M]](%{{.*}}) %{{.*}} : (!hssa.rel, i32, i32) -> i32
+rel caller _p:
+   _in, 0  :=     begin <-
+     m     :=  dup target  =:   ()
+    _out   :=    m _p      =:   _in
+     ()    := ~dup target  =:   m
+               -> end      =: _out, 0
+
+// A trivial reversible relation: out := in + p (add is an update op, so the
+// application is invertible).
+rel target _p:
+   _in, 0  :=    begin <-
+    _out   := add _p       =:   _in
+               -> end      =: _out, 0

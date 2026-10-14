@@ -1,0 +1,22 @@
+// Verbatim from Leridon/hssa (MIT License), programs/hssa/collatz.hssa.
+// Keep in sync with the reference corpus.
+rel collatz_step:
+n, 0 := begin<-
+c := mod n, 2 =: ()
+ -> L_even,L_odd =: n,c
+
+ n,0 := L_even <-
+ n1  :=  div n, 2 =: ()
+ ()  := ~mul n1, 2  =: n
+ -> end_even =: n1,0
+
+ n,0 := L_odd <-
+ n1  :=  mul n, 3  =: ()
+ ()  := ~div n1, 3  =: n
+  n2 := add 1 =: n1
+ -> end_odd =: n2,0
+
+n,was_even := end_odd,end_even<-
+() := discard =: was_even
+ -> end =: n,0
+

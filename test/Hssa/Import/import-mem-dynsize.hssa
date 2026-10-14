@@ -1,0 +1,41 @@
+// Dynamic heap sizing: the importer accepts an OPTIONAL size K in mmem.new's
+// parameter position (K a literal or an i32 value), an ADDITIVE extension beyond
+// the reference (whose mmem.new is argument-less, fixed at 1024). K flows to the
+// op as a real i32 size operand and threads unchanged to the inverse.
+//
+// RUN: hssa-translate --import-hssa %s | FileCheck %s
+// It lowers all the way to arith/cf/memref: mmem.new K becomes a dynamic alloc.
+// RUN: hssa-translate --import-hssa %s | hssa-opt --convert-hssa-to-arith | FileCheck %s --check-prefix=LOWER
+
+// A LITERAL size: mmem.new 4096 sizes the heap to 4096 cells.
+// CHECK-LABEL: func @litsize
+// CHECK: %[[K:.*]] = arith.constant 4096 : i32
+// CHECK: hssa.mmem.new(%[[K]]) : (i32) -> !hssa.mem
+// CHECK: hssa.mmem.new(%{{.*}}) %{{.*}} {inverted} : (i32, !hssa.mem) -> ()
+// LOWER-LABEL: func @litsize
+// LOWER: call @__hssa_new(%{{.*}}) : (index) -> memref<2x?xi32>
+// LOWER: memref.dealloc
+rel litsize:
+(), 0 := begin <-
+  m := mmem.new 4096 =: ()
+  m.1, p := mmem.allocate 1 =: m
+  m.2, () := mmem.readwrite p =: m.1, 0
+  m.3 := ~mmem.allocate 1 =: m.2, p
+  () := ~mmem.new 4096 =: m.3
+    -> end =: (), 0
+
+// A VALUE size: mmem.new _k sizes the heap by the relation's size parameter
+// (a read-only parameter, exempt from linearity, that may be any i32 -- a
+// computed value in general). K threads unchanged to the inverse.
+// CHECK-LABEL: func @valsize
+// CHECK: hssa.mmem.new(%{{.*}}) : (i32) -> !hssa.mem
+// CHECK: hssa.mmem.new(%{{.*}}) %{{.*}} {inverted} : (i32, !hssa.mem) -> ()
+// RUN: hssa-translate --import-hssa %s | hssa-opt --hssa-verify-linear
+rel valsize _k:
+(), 0 := begin <-
+  m := mmem.new _k =: ()
+  m.1, p := mmem.allocate 1 =: m
+  m.2, () := mmem.readwrite p =: m.1, 0
+  m.3 := ~mmem.allocate 1 =: m.2, p
+  () := ~mmem.new _k =: m.3
+    -> end =: (), 0

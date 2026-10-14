@@ -1,0 +1,29 @@
+// Verbatim from Leridon/hssa (MIT License), programs/hssa/fibpair.hssa.
+// Keep in sync with the reference corpus.
+rel fibpair:
+     n, 0       :=  begin <-
+                      -> L1    =:   (0, 1, n), 0
+
+(a, b, n), l_in :=  L2,L1 <-
+      ()        := ~equal 0, a =:       l_in
+     l_out      :=  less 0, n  =:        ()
+                    -> L4,L3   =: (a, b, n), l_out
+
+(a, b, n.0), 0  :=    L3 <-
+      n.1       :=   add -1    =:       n.0
+       c        :=    add b    =:        a
+                      -> L2    =:  (b, c, n.1), 0
+
+ (a, b, 0), 0   :=    L4 <-
+                     -> end    =:    (a, b), 0
+
+
+rel fibpair.test:
+(), 0  := begin <-
+(0, 1) := fibpair =:   0
+(1, 1) := fibpair =:   1
+(1, 2) := fibpair =:   2
+(2, 3) := fibpair =:   3
+(3, 5) := fibpair =:   4
+(5, 8) := fibpair =:   5
+           -> end =: (), 0
